@@ -226,7 +226,7 @@ class Invoice extends BaseController
                     ]);
                     
                     // Kunci Job Service agar tidak bisa diedit/di-invoice lagi
-                    $this->db->table('opr_service')->where('opr_service_uuid', $service_uuid)->update(['opr_service_locked' => 'Ya']);
+                    $this->db->table('opr_service')->where('opr_service_uuid', $service_uuid)->update(['opr_service_locked' => 'Ya','opr_service_invoice_uuid' => $invoiceUUID]);
                 }
             }
             

@@ -38,9 +38,9 @@
             <div class="card mb-4">
                 <div class="card-header">Daftar Item Sesuai Kuotasi</div>
                 <div class="card-body">
-                    <table class="table table-sm">
+                    <table id="quotation-items-table" class="table table-sm">
                         <thead><tr><th>Nama Item (Lokasi)</th><th>Qty</th><th>Harga</th><th>Total</th></tr></thead>
-                        <tbody id="quotation-items-table"></tbody>
+                        <tbody></tbody>
                     </table>
                 </div>
             </div>

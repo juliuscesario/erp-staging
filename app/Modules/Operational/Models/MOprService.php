@@ -12,6 +12,7 @@ class MOprService extends Model
         'opr_service_no',
         'opr_service_date',
         'opr_service_schedule_uuid',
+        'opr_service_invoice_uuid', // <-- TAMBAHKAN BARIS INI
         'opr_service_cust_pic_uuid',
         'opr_service_cust_sign_name',
         'opr_service_cust_sign_position',

@@ -29,7 +29,6 @@ Detail Invoice: <?= esc($invoice['inv_invoice_no']) ?>
                             $invoice['building_kabupaten'] ?? null, 
                             $invoice['building_kode_pos'] ?? null
                         ];
-                        // Tampilkan alamat jika ada isinya, jika tidak tampilkan pesan alternatif
                         $alamat_final = implode(', ', array_filter($alamat_lengkap));
                         echo esc($alamat_final ?: 'Alamat tidak tersedia');
                     ?>
@@ -48,7 +47,7 @@ Detail Invoice: <?= esc($invoice['inv_invoice_no']) ?>
     </div>
 
     <h4 class="mt-4">Rincian Tagihan</h4>
-    <table class="table table-bordered">
+    <table id="invoice-detail-table" class="table table-bordered table-striped" style="width:100%">
         <thead>
             <tr>
                 <th>Deskripsi</th>
@@ -58,7 +57,6 @@ Detail Invoice: <?= esc($invoice['inv_invoice_no']) ?>
         <tbody>
             <?php if (!empty($invoice_details)): ?>
                 <?php foreach($invoice_details as $detail): ?>
-                    
                     <tr>
                         <td>
                             <?php 
@@ -66,33 +64,28 @@ Detail Invoice: <?= esc($invoice['inv_invoice_no']) ?>
                             ?>
                             <strong><?= esc($deskripsi_sr) ?> - <?= esc($detail['service_no']) ?></strong>
                             <br><small>(Ref. MR: <?= esc($detail['mr_no']) ?>)</small>
+
+                            <?php if(!empty($detail['items'])): ?>
+                                <ul style="margin-top: 5px; margin-bottom: 0; padding-left: 20px; list-style-type: none;">
+                                    <?php foreach($detail['items'] as $item): ?>
+                                        <?php
+                                            $deskripsi_item = esc($item['inventory_name']);
+                                            if ($item['inventory_jenis'] === 'Asset') {
+                                                $lokasi = ' (Lokasi: ' . esc($item['building_name'] ?? 'N/A') . ' - ' . esc($item['room_name'] ?? 'N/A') . ')';
+                                                $deskripsi_item = 'Sewa ' . $deskripsi_item . $lokasi;
+                                            } else {
+                                                $deskripsi_item = 'Refill ' . $deskripsi_item;
+                                            }
+                                        ?>
+                                        <li>
+                                            <small><em>- <?= $deskripsi_item ?> (Qty: <?= esc($item['wr_matrequest_item_item_qty']) ?>)</em></small>
+                                        </li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            <?php endif; ?>
                         </td>
                         <td><?= date('d M Y', strtotime($detail['service_date'])) ?></td>
                     </tr>
-
-                    <?php if(!empty($detail['items'])): ?>
-                        <?php foreach($detail['items'] as $item): ?>
-                            <?php
-                                // Determine the item description based on its type
-                                $deskripsi_item = esc($item['inventory_name']);
-                                if ($item['inventory_jenis'] === 'Asset') {
-                                    $lokasi = ' (Lokasi: ' . esc($item['building_name'] ?? 'N/A') . ' - ' . esc($item['room_name'] ?? 'N/A') . ')';
-                                    $deskripsi_item = 'Sewa ' . $deskripsi_item . $lokasi;
-                                } else { // For 'Retail' items
-                                    $deskripsi_item = 'Refill ' . $deskripsi_item;
-                                }
-                            ?>
-                            <tr style="background-color: #fafafa;">
-                                <td style="padding-left: 25px;">
-                                    <em>- <?= $deskripsi_item ?></em>
-                                </td>
-                                <td>
-                                    <em>Qty: <?= esc($item['wr_matrequest_item_item_qty']) ?></em>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-
                 <?php endforeach; ?>
             <?php else: ?>
                 <tr><td colspan="2" class="text-center">Tidak ada rincian pekerjaan.</td></tr>
@@ -109,4 +102,14 @@ Detail Invoice: <?= esc($invoice['inv_invoice_no']) ?>
             <h4><strong>Grand Total:</strong> <?= number_format($invoice['inv_invoice_grand_total'], 0, ',', '.') ?></h4>
         </div>
     </div>
+<?= $this->endSection() ?>
+
+<?= $this->section('pageScripts') ?>
+<script>
+$(document).ready(function() {
+    $('#invoice-detail-table').DataTable({
+        "order": [] // Disable initial sorting
+    });
+});
+</script>
 <?= $this->endSection() ?>
