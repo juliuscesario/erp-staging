@@ -62,10 +62,19 @@ class MInvoice extends Model
 
         // 1. Get the main invoice data (this part is already correct)
         $main_builder = $this->db->table('inv_invoice as a');
-        $main_builder->select('a.*, b.cust_name, con.mkt_contract_no, con.mkt_contract_quotation_uuid');
+        $main_builder->select('a.*, b.cust_name, bill.cust_bill_email, tax.bill_tax_npwp, tax.bill_tax_alamat, con.mkt_contract_no, con.mkt_contract_quotation_uuid,
+         bldg.building_name, bldg.building_add1, bldg.building_kelurahan, bldg.building_kecamatan, bldg.building_kabupaten, bldg.building_kode_pos,
+            br.branch_alamat, br.branch_kelurahan, br.branch_kecamatan, br.branch_kabupaten, 
+            br.branch_provinsi, br.branch_negara, br.branch_kode_pos, br.branch_phone1');
         $main_builder->join('m_cust as b', 'a.inv_invoice_cust_uuid = b.cust_uuid', 'left');
+        $main_builder->join('m_cust_bill as bill', 'a.inv_invoice_cust_bill_uuid = bill.cust_bill_uuid', 'left');
+        $main_builder->join('m_cust_bill_tax as tax', 'a.inv_invoice_cust_bill_tax_uuid = tax.bill_tax_uuid', 'left');
         $main_builder->join('mkt_contract as con', 'a.inv_invoice_contract_uuid = con.mkt_contract_uuid', 'left');
+        $main_builder->join('mkt_quotation as q', 'con.mkt_contract_quotation_uuid = q.mkt_quotation_uuid', 'left');
+        $main_builder->join('m_branch as br', 'br.branch_uuid = con.mkt_contract_branch_uuid','left');
+        $main_builder->join('m_building as bldg', 'FIND_IN_SET(bldg.building_uuid, q.mkt_quotation_building_uuid)', 'left');
         $main_builder->where('a.inv_invoice_uuid', $invoice_uuid);
+
         $data['invoice'] = $main_builder->get()->getRowArray();
 
         if ($data['invoice']) {
@@ -87,26 +96,39 @@ class MInvoice extends Model
                     'items' => [] // This will hold ALL items (assets and refills)
                 ];
 
-                // 3. Get ALL items (Asset and Retail) from the Material Request of the CURRENT period
-                $current_mr = $this->db->table('wr_matrequest')
+                // --- REWORKED LOGIC STARTS HERE ---
+
+                // A. Get all 'Asset' (Sewa) items directly from the quotation
+                $asset_builder = $this->db->table('mkt_quotation_order as a');
+                $asset_builder->select('a.mkt_quotation_order_item_qty AS wr_matrequest_item_item_qty, b.inventory_name, b.inventory_jenis, d.room_name, e.building_name');
+                $asset_builder->join('m_inventory as b', 'a.mkt_quotation_order_unit_inventory_uuid = b.inventory_uuid');
+                $asset_builder->join('m_room as d', 'a.mkt_quotation_order_room_uuid = d.room_uuid', 'left');
+                $asset_builder->join('m_building as e', 'a.mkt_quotation_order_building_uuid = e.building_uuid', 'left');
+                $asset_builder->where('a.mkt_quotation_order_quotation_uuid', $data['invoice']['mkt_contract_quotation_uuid']);
+                $asset_builder->where('b.inventory_jenis', 'Asset');
+                $asset_items = $asset_builder->get()->getResultArray();
+
+                // B. Get 'Retail' (Refill) items from the period's specific Material Request
+                $retail_items = [];
+                $material_request = $this->db->table('wr_matrequest')
                                     ->where('wr_matrequest_opr_schedule_uuid', $service['opr_schedule_uuid'])
                                     ->get()->getRowArray();
 
-                if ($current_mr) {
-                    $service_entry['mr_no'] = $current_mr['wr_matrequest_no'];
+                if ($material_request) {
+                    $service_entry['mr_no'] = $material_request['wr_matrequest_no'];
                     
-                    $items_builder = $this->db->table('wr_matrequest_item as a');
-                    $items_builder->select('a.wr_matrequest_item_item_qty, b.inventory_name, b.inventory_jenis, d.room_name, e.building_name');
-                    $items_builder->join('m_inventory as b', 'a.wr_matrequest_item_inventory_uuid = b.inventory_uuid');
-                    $items_builder->join('mkt_quotation_order as c', 'a.wr_matrequest_item_inventory_uuid = c.mkt_quotation_order_unit_inventory_uuid OR a.wr_matrequest_item_inventory_uuid = c.mkt_quotation_order_oil_inventory_uuid', 'left');
-                    $items_builder->join('m_room as d', 'c.mkt_quotation_order_room_uuid = d.room_uuid', 'left');
-                    $items_builder->join('m_building as e', 'c.mkt_quotation_order_building_uuid = e.building_uuid', 'left');
-                    $items_builder->where('a.wr_matrequest_item_matrequest_uuid', $current_mr['wr_matrequest_uuid']);
-                    $items_builder->where('c.mkt_quotation_order_quotation_uuid', $data['invoice']['mkt_contract_quotation_uuid']);
-                    $items_builder->groupBy('a.wr_matrequest_item_inventory_uuid'); // Group to avoid duplicates
-                    
-                    $service_entry['items'] = $items_builder->get()->getResultArray();
+                    $retail_builder = $this->db->table('wr_matrequest_item as a');
+                    $retail_builder->select('a.wr_matrequest_item_item_qty, b.inventory_name, b.inventory_jenis, "N/A" as room_name, "N/A" as building_name'); // No location for refills
+                    $retail_builder->join('m_inventory as b', 'a.wr_matrequest_item_inventory_uuid = b.inventory_uuid');
+                    $retail_builder->where('a.wr_matrequest_item_matrequest_uuid', $material_request['wr_matrequest_uuid']);
+                    $retail_builder->where('b.inventory_jenis !=', 'Asset'); // Get everything that is NOT an asset
+                    $retail_items = $retail_builder->get()->getResultArray();
                 }
+                
+                // C. Combine both Asset and Retail items
+                $service_entry['items'] = array_merge($asset_items, $retail_items);
+                
+                // --- REWORKED LOGIC ENDS HERE ---
                 
                 $invoice_details[] = $service_entry;
             }

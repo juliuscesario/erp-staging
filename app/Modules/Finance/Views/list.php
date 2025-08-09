@@ -44,9 +44,15 @@ Daftar Invoice
                                     </span>
                                 </td>
                                 <td>
+                                    
                                     <a href="<?= site_url('finance/invoice/printPdf/' . $invoice['inv_invoice_uuid']) ?>" target="_blank" class="btn btn-sm btn-info">
                                         Print
                                     </a>
+                                    <?php if ($invoice['inv_invoice_status'] === 'Unpaid'): ?>
+                                        <a href="<?= site_url('finance/invoice/edit/' . $invoice['inv_invoice_uuid']) ?>" class="btn btn-sm btn-warning">
+                                            Edit
+                                        </a>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php endforeach; ?>

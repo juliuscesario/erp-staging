@@ -250,60 +250,15 @@ class Invoice extends BaseController
         $db = \Config\Database::connect();
         $data = [];
 
+        $invoiceModel = new \Modules\Finance\Models\MInvoice();
+        $data = $invoiceModel->getInvoiceDetail($invoice_uuid);
+
         // 1. Ambil data utama invoice (query ini sudah benar)
-        $main_builder = $db->table('inv_invoice as a');
-        $main_builder->select('a.*, b.cust_name, bill.cust_bill_email, tax.bill_tax_npwp, tax.bill_tax_alamat, con.mkt_contract_no, con.mkt_contract_quotation_uuid');
-        $main_builder->join('m_cust as b', 'a.inv_invoice_cust_uuid = b.cust_uuid', 'left');
-        $main_builder->join('m_cust_bill as bill', 'a.inv_invoice_cust_bill_uuid = bill.cust_bill_uuid', 'left');
-        $main_builder->join('m_cust_bill_tax as tax', 'a.inv_invoice_cust_bill_tax_uuid = tax.bill_tax_uuid', 'left');
-        $main_builder->join('mkt_contract as con', 'a.inv_invoice_contract_uuid = con.mkt_contract_uuid', 'left');
-        $main_builder->where('a.inv_invoice_uuid', $invoice_uuid);
-        $data['invoice'] = $main_builder->get()->getRowArray();
 
         if (!$data['invoice']) {
             throw new \CodeIgniter\Exceptions\PageNotFoundException('Invoice tidak ditemukan');
         }
 
-        // 2. Ambil semua Job Service yang ada di invoice ini
-        $services_in_invoice = $db->table('inv_invoice_item as a')
-                                    ->join('opr_service as b', 'a.inv_invoice_item_service_uuid = b.opr_service_uuid')
-                                    ->join('opr_schedule as c', 'b.opr_service_schedule_uuid = c.opr_schedule_uuid')
-                                    ->where('a.inv_invoice_item_invoice_uuid', $invoice_uuid)
-                                    ->select('b.opr_service_no, b.opr_service_date, c.opr_schedule_period_run, c.opr_schedule_uuid, c.opr_schedule_contract_uuid')
-                                    ->get()->getResultArray();
-        
-        // 3. Loop melalui setiap service untuk mengambil detail itemnya
-        $data['invoice_details'] = [];
-        foreach ($services_in_invoice as $service) {
-            $service_entry = [
-                'service_no' => $service['opr_service_no'],
-                'service_date' => $service['opr_service_date'],
-                'period' => $service['opr_schedule_period_run'],
-                'mr_no' => 'N/A',
-                'items' => []
-            ];
-
-            // Cari Material Request yang terkait dengan jadwal service ini
-            $material_request = $db->table('wr_matrequest')
-                                ->where('wr_matrequest_opr_schedule_uuid', $service['opr_schedule_uuid'])
-                                ->get()->getRowArray();
-
-            if ($material_request) {
-                $service_entry['mr_no'] = $material_request['wr_matrequest_no'];
-                
-                // Ambil semua item dari MR tersebut, lengkap dengan detail lokasi
-                $items_builder = $db->table('wr_matrequest_item as a');
-                $items_builder->select('a.wr_matrequest_item_item_qty, b.inventory_name, b.inventory_jenis, d.room_name, e.building_name');
-                $items_builder->join('m_inventory as b', 'a.wr_matrequest_item_inventory_uuid = b.inventory_uuid');
-                $items_builder->join('mkt_quotation_order as c', 'a.wr_matrequest_item_inventory_uuid = c.mkt_quotation_order_unit_inventory_uuid AND c.mkt_quotation_order_quotation_uuid = \''.$data['invoice']['mkt_contract_quotation_uuid'].'\'', 'left');
-                $items_builder->join('m_room as d', 'c.mkt_quotation_order_room_uuid = d.room_uuid', 'left');
-                $items_builder->join('m_building as e', 'c.mkt_quotation_order_building_uuid = e.building_uuid', 'left');
-                $items_builder->where('a.wr_matrequest_item_matrequest_uuid', $material_request['wr_matrequest_uuid']);
-                $service_entry['items'] = $items_builder->get()->getResultArray();
-            }
-            
-            $data['invoice_details'][] = $service_entry;
-        }
         // --- AKHIR LOGIKA BARU ---
         
         // 3. Ambil data bank default
@@ -313,7 +268,17 @@ class Invoice extends BaseController
         // $data['terbilang'] = fungsi_terbilang($data['invoice']->inv_invoice_grand_total);
         // 2. Panggil fungsi dan simpan hasilnya
         $data['terbilang'] = number_to_words($data['invoice']['inv_invoice_grand_total']);
-        print_r($data);exit;
+         // Buat footer
+        $address_parts = [
+            $data['invoice']['branch_alamat'] ?? null,
+            $data['invoice']['branch_kelurahan'] ?? null,
+            isset($data['invoice']['branch_kecamatan']) ? 'Kec. ' . $data['invoice']['branch_kecamatan'] : null,
+            $data['invoice']['branch_kabupaten'] ?? null,
+            $data['invoice']['branch_provinsi'] ?? null,
+        ];
+        $full_address = implode(', ', array_filter($address_parts));
+        $data['full_address'] = $full_address. ' ' . ($data['invoice']['branch_kode_pos'] ?? '') . ', ' . ($data['invoice']['branch_negara'] ?? '') . ' Telp ' . ($data['invoice']['branch_phone1'] ?? '');
+
         $html = view('Modules\Finance\Views\print_invoice', $data);
         
         $options = new Options();
@@ -351,5 +316,69 @@ class Invoice extends BaseController
         }
 
         return view('Modules\Finance\Views\detail', $data);
+    }
+
+    
+    // ADD THIS NEW METHOD FOR THE EDIT PAGE
+    public function edit($invoice_uuid)
+    {
+        helper('terbilang');
+        $invoiceModel = new \Modules\Finance\Models\MInvoice();
+        $data = $invoiceModel->getInvoiceDetail($invoice_uuid);
+
+        if (empty($data['invoice'])) {
+            throw new \CodeIgniter\Exceptions\PageNotFoundException('Invoice tidak ditemukan');
+        }
+
+        // IMPORTANT: Only allow editing for 'Unpaid' invoices
+        if ($data['invoice']['inv_invoice_status'] !== 'Unpaid') {
+            return redirect()->to(site_url('finance/invoice/list'))->with('error', 'Invoice yang sudah lunas tidak dapat diubah.');
+        }
+
+        return view('Modules\Finance\Views\edit', $data);
+    }
+
+    // ADD THIS NEW METHOD TO HANDLE THE UPDATE
+    public function update($invoice_uuid)
+    {
+        helper('terbilang');
+        $invoiceModel = new \Modules\Finance\Models\MInvoice();
+        $invoice = $invoiceModel->find($invoice_uuid);
+
+        if (!$invoice || $invoice['inv_invoice_status'] !== 'Unpaid') {
+            return redirect()->to(site_url('finance/invoice/list'))->with('error', 'Invoice tidak ditemukan atau sudah lunas.');
+        }
+
+        // Get data from form
+        $invoice_date = $this->request->getPost('inv_invoice_date');
+        $discount = (float) $this->request->getPost('inv_invoice_discount');
+        $apply_tax = $this->request->getPost('apply_tax');
+
+        // Recalculate totals
+        $subtotal = (float) $invoice['inv_invoice_subtotal'];
+        $ppn_total = 0;
+        
+        // Sesuai aturan: PPN 11% dari (Subtotal - Diskon)
+        if ($apply_tax) {
+            $ppn_total = ($subtotal - $discount) * 0.11;
+        }
+
+        $grand_total = $subtotal - $discount + $ppn_total;
+        $terbilang = number_to_words($grand_total);
+
+        // Prepare data for update
+        $updateData = [
+            'inv_invoice_date'      => $invoice_date,
+            'inv_invoice_due_date'  => date('Y-m-d', strtotime($invoice_date . ' +14 days')), // Asumsi jatuh tempo 14 hari
+            'inv_invoice_discount'  => $discount,
+            'inv_invoice_ppn_total' => $ppn_total,
+            'inv_invoice_grand_total' => $grand_total,
+            'inv_invoice_terbilang' => $terbilang,
+        ];
+        
+        // Update the database
+        $invoiceModel->update($invoice_uuid, $updateData);
+
+        return redirect()->to(site_url('finance/invoice/detail/' . $invoice_uuid))->with('success', 'Invoice berhasil diperbarui.');
     }
 }

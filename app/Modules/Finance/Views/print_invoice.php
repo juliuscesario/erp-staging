@@ -30,7 +30,7 @@
             <td class="bill-to">
                 <strong>Bill To:</strong><br>
                 <?= esc($invoice['cust_name']) ?><br>
-                <?= nl2br(esc($invoice['bill_tax_alamat'])) ?><br>
+                ALAMAT:<?= nl2br(esc($invoice['bill_tax_alamat'])) ?><br>
                 NPWP: <?= esc($invoice['bill_tax_npwp']) ?>
             </td>
             <td class="invoice-info">
@@ -120,7 +120,8 @@
         <strong>Payment to:</strong><br>
         Bank: <?= esc($bank['bank_name']) ?> | 
         A/C No: <?= esc($bank['bank_account_number']) ?> | 
-        A/N: <?= esc($bank['bank_account_name']) ?>
+        A/N: <?= esc($bank['bank_account_name']) ?><br/>
+        <?=$full_address?>
     </div>
 
 </body>
