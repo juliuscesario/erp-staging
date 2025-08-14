@@ -26,6 +26,12 @@ Daftar Invoice
                 </thead>
                 <tbody>
                     <?php if (!empty($invoices)): ?>
+                        <?php 
+                            // Variabel untuk tanggal hari ini
+                            $currentDate = new DateTime();
+                            $currentDay = (int)$currentDate->format('j');
+                            $currentMonthYear = $currentDate->format('Y-m');
+                        ?>
                         <?php foreach ($invoices as $invoice): ?>
                             <tr>
                                 <td>
@@ -43,16 +49,24 @@ Daftar Invoice
                                         <?= esc($invoice['inv_invoice_status']) ?>
                                     </span>
                                 </td>
-                                <td>
-                                    
+                               <td>
+                                    <?php 
+                                        // Ambil bulan dan tahun dari tanggal invoice
+                                        $invoiceDate = new DateTime($invoice['inv_invoice_date']);
+                                        $invoiceMonthYear = $invoiceDate->format('Y-m');
+
+                                        // Logika baru untuk menonaktifkan tombol edit
+                                        $isLocked = ($currentDay >= 14 && $invoiceMonthYear < $currentMonthYear);
+                                        $can_edit = ($invoice['inv_invoice_status'] === 'Unpaid' && !$isLocked);
+                                    ?>
+                                    <a href="<?= $can_edit ? site_url('finance/invoice/edit/' . $invoice['inv_invoice_uuid']) : '#' ?>" 
+                                    class="btn btn-sm btn-warning <?= $can_edit ? '' : 'disabled' ?>"
+                                    <?= !$can_edit ? 'title="Invoice dari bulan sebelumnya tidak dapat diubah setelah tanggal 14."' : '' ?>>
+                                        Edit
+                                    </a>
                                     <a href="<?= site_url('finance/invoice/printPdf/' . $invoice['inv_invoice_uuid']) ?>" target="_blank" class="btn btn-sm btn-info">
                                         Print
                                     </a>
-                                    <?php if ($invoice['inv_invoice_status'] === 'Unpaid'): ?>
-                                        <a href="<?= site_url('finance/invoice/edit/' . $invoice['inv_invoice_uuid']) ?>" class="btn btn-sm btn-warning">
-                                            Edit
-                                        </a>
-                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php endforeach; ?>

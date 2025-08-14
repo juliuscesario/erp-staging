@@ -152,8 +152,8 @@ class Invoice extends BaseController
 
     public function store()
     {
-        // 1. Muat helper 'terbilang' di awal
-        helper('terbilang');
+         // 1. Muat helper 'terbilang' dan 'JurnalHelper'
+        helper(['terbilang', 'jurnal']);
 
         // 2. Ambil dan validasi data JSON dari request
         $json = json_decode($this->request->getBody());
@@ -197,6 +197,7 @@ class Invoice extends BaseController
                 'inv_invoice_id'   => $new_id,
                 'inv_invoice_no'   => $new_no,
                 'inv_invoice_date' => $json->invoice_date,
+                'inv_invoice_due_date' => date('Y-m-d', strtotime($json->invoice_date . ' +30 days')),
                 'inv_invoice_contract_uuid' => $json->contract_uuid,
                 'inv_invoice_cust_uuid' => $contract->mkt_contract_cust_uuid,
                 'inv_invoice_cust_bill_uuid' => $billing_info->cust_bill_uuid,
@@ -229,6 +230,13 @@ class Invoice extends BaseController
                     $this->db->table('opr_service')->where('opr_service_uuid', $service_uuid)->update(['opr_service_locked' => 'Ya','opr_service_invoice_uuid' => $invoiceUUID]);
                 }
             }
+
+            // ==========================================================
+            // TINDAKAN PERBAIKAN DI SINI
+            // ==========================================================
+            
+            // 8. Panggil helper untuk membuat jurnal SEBELUM transaksi ditutup
+            buatJurnalInvoice($invoiceUUID);
             
             $this->db->transComplete();
 
@@ -324,12 +332,33 @@ class Invoice extends BaseController
     {
         helper('terbilang');
         $invoiceModel = new \Modules\Finance\Models\MInvoice();
-        $data = $invoiceModel->getInvoiceDetail($invoice_uuid);
 
-        if (empty($data['invoice'])) {
-            throw new \CodeIgniter\Exceptions\PageNotFoundException('Invoice tidak ditemukan');
+        // ====================================================================
+        // FAILSAFE: Validasi Tanggal Pelaporan PPN
+        // Logika yang sama seperti di fungsi update()
+        // ====================================================================
+        $invoice = $invoiceModel->find($invoice_uuid);
+        if (!$invoice) {
+            return redirect()->to(site_url('finance/invoice/list'))->with('error', 'Invoice tidak ditemukan.');
+        }
+        
+        if ($invoice['inv_invoice_status'] !== 'Unpaid') {
+            return redirect()->to(site_url('finance/invoice/list'))->with('error', 'Invoice yang sudah lunas tidak dapat diubah.');
+        }
+        $currentDate = new \DateTime(); 
+        $currentDay = (int)$currentDate->format('j');
+        $currentMonthYear = $currentDate->format('Y-m');
+        
+        $invoiceDate = new \DateTime($invoice['inv_invoice_date']);
+        $invoiceMonthYear = $invoiceDate->format('Y-m');
+
+        if ($currentDay >= 14 && $invoiceMonthYear < $currentMonthYear) {
+            // Jika terkunci, jangan tampilkan halaman edit. Redirect kembali dengan pesan error.
+            return redirect()->to(site_url('finance/invoice/list'))->with('error', 'Gagal membuka edit: Invoice dari bulan sebelumnya tidak dapat diubah setelah tanggal 14.');
         }
 
+        // JIKA SEMUA FAILSAFE AMAN
+        $data = $invoiceModel->getInvoiceDetail($invoice_uuid);
         // IMPORTANT: Only allow editing for 'Unpaid' invoices
         if ($data['invoice']['inv_invoice_status'] !== 'Unpaid') {
             return redirect()->to(site_url('finance/invoice/list'))->with('error', 'Invoice yang sudah lunas tidak dapat diubah.');
@@ -338,47 +367,72 @@ class Invoice extends BaseController
         return view('Modules\Finance\Views\edit', $data);
     }
 
-    // ADD THIS NEW METHOD TO HANDLE THE UPDATE
     public function update($invoice_uuid)
     {
-        helper('terbilang');
+        helper(['terbilang', 'jurnal']);
         $invoiceModel = new \Modules\Finance\Models\MInvoice();
-        $invoice = $invoiceModel->find($invoice_uuid);
 
-        if (!$invoice || $invoice['inv_invoice_status'] !== 'Unpaid') {
-            return redirect()->to(site_url('finance/invoice/list'))->with('error', 'Invoice tidak ditemukan atau sudah lunas.');
+        // 1. Validasi dan ambil data invoice lama
+        $invoiceLama = $invoiceModel->find($invoice_uuid);
+        if (!$invoiceLama || $invoiceLama['inv_invoice_status'] !== 'Unpaid') {
+            return redirect()->back()->with('error', 'Invoice ini tidak dapat diubah.');
         }
 
-        // Get data from form
-        $invoice_date = $this->request->getPost('inv_invoice_date');
-        $discount = (float) $this->request->getPost('inv_invoice_discount');
-        $apply_tax = $this->request->getPost('apply_tax');
+        // ====================================================================
+        // PERBAIKAN UTAMA DI SINI
+        // ====================================================================
 
-        // Recalculate totals
-        $subtotal = (float) $invoice['inv_invoice_subtotal'];
-        $ppn_total = 0;
+        // Ambil data dari form POST
+        $newDiscount = (float) $this->request->getPost('inv_invoice_discount');
+        $invoiceDate = $this->request->getPost('inv_invoice_date');
+
+        // Ambil data quotation yang terhubung untuk mendapatkan persentase PPN asli
+        $contract = $this->db->table('mkt_contract')->where('mkt_contract_uuid', $invoiceLama['inv_invoice_contract_uuid'])->get()->getRowArray();
+        $quotation = $this->db->table('mkt_quotation')->where('mkt_quotation_uuid', $contract['mkt_contract_quotation_uuid'])->get()->getRowArray();
         
-        // Sesuai aturan: PPN 11% dari (Subtotal - Diskon)
-        if ($apply_tax) {
-            $ppn_total = ($subtotal - $discount) * 0.11;
-        }
+        // Ambil nilai-nilai fundamental
+        $subtotal = (float) $invoiceLama['inv_invoice_subtotal'];
+        $ppnPercentage = (float) ($quotation['mkt_quotation_ppn_persen'] ?? 11); // Default 11% jika tidak ada
 
-        $grand_total = $subtotal - $discount + $ppn_total;
-        $terbilang = number_to_words($grand_total);
+        // Lakukan perhitungan yang benar sesuai permintaan Anda
+        $dppAfterDiscount = $subtotal - $newDiscount; // DPP setelah diskon
+        $newPpnTotal = $dppAfterDiscount * ($ppnPercentage / 100); // Hitung PPN dari DPP baru
+        $newGrandTotal = $dppAfterDiscount + $newPpnTotal; // Hitung Grand Total baru
 
-        // Prepare data for update
-        $updateData = [
-            'inv_invoice_date'      => $invoice_date,
-            'inv_invoice_due_date'  => date('Y-m-d', strtotime($invoice_date . ' +14 days')), // Asumsi jatuh tempo 14 hari
-            'inv_invoice_discount'  => $discount,
-            'inv_invoice_ppn_total' => $ppn_total,
-            'inv_invoice_grand_total' => $grand_total,
-            'inv_invoice_terbilang' => $terbilang,
+        $dataUpdate = [
+            'inv_invoice_date'        => $invoiceDate,
+            'inv_invoice_discount'    => $newDiscount,
+            'inv_invoice_ppn_total'   => $newPpnTotal,
+            'inv_invoice_grand_total' => $newGrandTotal,
+            'inv_invoice_terbilang'   => number_to_words($newGrandTotal),
         ];
-        
-        // Update the database
-        $invoiceModel->update($invoice_uuid, $updateData);
+        // ====================================================================
+        // AKHIR DARI PERBAIKAN
+        // ====================================================================
 
-        return redirect()->to(site_url('finance/invoice/detail/' . $invoice_uuid))->with('success', 'Invoice berhasil diperbarui.');
+        try {
+            $this->db->transStart();
+
+            // 3. Buat Jurnal Pembalik
+            balikJurnalInvoice($invoice_uuid);
+
+            // 4. Update tabel inv_invoice dengan nilai BARU
+            $invoiceModel->update($invoice_uuid, $dataUpdate);
+
+            // 5. Buat Jurnal BARU berdasarkan data yang sudah diupdate
+            buatJurnalInvoice($invoice_uuid);
+            
+            $this->db->transComplete();
+
+            if ($this->db->transStatus() === false) {
+                return redirect()->back()->with('error', 'Gagal memperbarui invoice.');
+            }
+
+            return redirect()->to(site_url('finance/invoice/detail/' . $invoice_uuid))->with('success', 'Invoice berhasil diperbarui.');
+
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', 'Terjadi kesalahan: ' . $e->getMessage());
+        }
     }
+
 }
