@@ -7,9 +7,12 @@ Daftar Invoice
 <?= $this->section('main') ?>
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h1>Daftar Invoice</h1>
-        <a href="<?= site_url('finance/invoice') ?>" class="btn btn-primary">
-            + Buat Invoice Baru
-        </a>
+        <div>
+            <a href="<?= site_url('/dashboard/home') ?>" class="btn btn-secondary">Kembali ke Dashboard</a>
+            <a href="<?= site_url('finance/invoice') ?>" class="btn btn-primary">
+                + Buat Invoice Baru
+            </a>
+        </div>
     </div>
 
     <div class="card">

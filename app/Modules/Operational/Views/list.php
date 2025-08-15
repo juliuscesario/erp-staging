@@ -7,9 +7,12 @@ Daftar Job Service
 <?= $this->section('main') ?>
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h1>Daftar Job Service</h1>
-        <a href="<?= site_url('operational/opr_service/create/b11a7816-01a0-4946-8253-d557f0d2dfc1') ?>" class="btn btn-primary">
+        <div>
+            <a href="<?= site_url('/dashboard/home') ?>" class="btn btn-secondary">Kembali ke Dashboard</a>
+            <a href="<?= site_url('operational/opr_service/create/b11a7816-01a0-4946-8253-d557f0d2dfc1') ?>" class="btn btn-primary">
             + Buat Job Service Baru
         </a>
+        </div>
     </div>
 
     <div class="card">

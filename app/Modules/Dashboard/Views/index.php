@@ -40,27 +40,43 @@ Dashboard Utama
     </div>
 
     <div class="row">
-        <div class="col-md-4 mb-4">
-            <a href="<?= site_url('warehouse/materialrequest') ?>" class="card shadow-sm dashboard-card">
+        <div class="col-lg-3 col-md-6 mb-4">
+            <a href="<?= site_url('warehouse/materialrequest') ?>" class="card shadow-sm dashboard-card h-100">
                 <div class="card-body">
                     <i class="fas fa-boxes-stacked"></i>
                     <h4>Material Request</h4>
                 </div>
             </a>
         </div>
-        <div class="col-md-4 mb-4">
-            <a href="<?= site_url('operational/opr_service') ?>" class="card shadow-sm dashboard-card">
+        <div class="col-lg-3 col-md-6 mb-4">
+            <a href="<?= site_url('operational/opr_service') ?>" class="card shadow-sm dashboard-card h-100">
                 <div class="card-body">
                     <i class="fas fa-wrench"></i>
                     <h4>Job Service</h4>
                 </div>
             </a>
         </div>
-        <div class="col-md-4 mb-4">
-            <a href="<?= site_url('finance/invoice') ?>" class="card shadow-sm dashboard-card">
+        <div class="col-lg-3 col-md-6 mb-4">
+            <a href="<?= site_url('finance/invoice/list') ?>" class="card shadow-sm dashboard-card h-100">
                 <div class="card-body">
                     <i class="fas fa-file-invoice-dollar"></i>
                     <h4>Invoice</h4>
+                </div>
+            </a>
+        </div>
+        <div class="col-lg-3 col-md-6 mb-4">
+            <a href="<?= site_url('fpayment/payment') ?>" class="card shadow-sm dashboard-card h-100">
+                <div class="card-body">
+                    <i class="fas fa-money-check-dollar"></i>
+                    <h4>Payment</h4>
+                </div>
+            </a>
+        </div>
+        <div class="col-lg-3 col-md-6 mb-4">
+            <a href="<?= site_url('jurnal/jurnal') ?>" class="card shadow-sm dashboard-card h-100">
+                <div class="card-body">
+                    <i class="fas fa-book"></i>
+                    <h4>Jurnal</h4>
                 </div>
             </a>
         </div>

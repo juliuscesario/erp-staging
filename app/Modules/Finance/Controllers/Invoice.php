@@ -92,12 +92,13 @@ class Invoice extends BaseController
             
             $total_per_termin = $calculated_subtotal * $termOfPayment;
             
-            // Tambahkan PPN jika ada
-            $ppn_persen = floatval($quotation['mkt_quotation_ppn_persen'] ?? 0);
-            $ppn_total = $total_per_termin * ($ppn_persen / 100);
-            
             // Kurangi diskon
             $discount = floatval($quotation['mkt_quotation_discount'] ?? 0);
+
+            // Tambahkan PPN jika ada
+            $ppn_persen = floatval($quotation['mkt_quotation_ppn_persen'] ?? 0);
+            $ppn_total = ($total_per_termin - $discount) * ($ppn_persen / 100);
+            
 
             // Simpan hasil perhitungan ke dalam data yang akan dikirim
             $data['calculated_totals'] = [
@@ -186,7 +187,7 @@ class Invoice extends BaseController
             $lastIdRow = $invoiceModel->selectMax('inv_invoice_id', 'last_id')->get()->getRow();
             $new_id = ($lastIdRow ? $lastIdRow->last_id : 0) + 1;
             $new_no = sprintf('INV-ART/%s-%s/%04d', date('m'), date('y'), $new_id);
-
+            
             // 5. Panggil helper untuk "Terbilang"
             $terbilang_text = number_to_words($json->grand_total_value);
 

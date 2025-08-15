@@ -126,3 +126,75 @@ if (!function_exists('balikJurnalInvoice')) {
         }
     }
 }
+
+
+if (!function_exists('catatJurnalPembayaran')) {
+    /**
+     * Fungsi untuk mencatat JURNAL PEMBAYARAN dengan logika akuntansi yang sudah diperbaiki.
+     * Jurnal ini mencatat pelunasan piutang.
+     */
+    function catatJurnalPembayaran($invoice, $payment)
+    {
+        $db = \Config\Database::connect();
+        
+        // Nomor Akun dari data_2025_sub
+        $no_acc_piutang = '11310101'; // Piutang Dagang
+        $no_acc_kas_bank = ($payment['payment_method'] === 'Cash') ? '11110001' : '11120001'; // Kas atau Bank
+        $no_acc_pph23 = '11730103'; // Uang Muka PPh 23
+
+        try {
+            $db->transStart();
+
+            $lastTrans = $db->table('data_2025_trans')->selectMax('trans_id', 'last_id')->get()->getRow();
+            $next_trans_id = ($lastTrans && $lastTrans->last_id) ? $lastTrans->last_id + 1 : 1;
+            
+            $keterangan = 'Penerimaan Pembayaran Invoice ' . $invoice->inv_invoice_no . ' a/n ' . $invoice->cust_name;
+
+            if ($payment['payment_type'] === 'Bayar Penuh') {
+                // --- JURNAL BAYAR PENUH (Debit: Kas/Bank, Kredit: Piutang) ---
+                $db->table('data_2025_trans')->insert([
+                    'trans_uuid' => Uuid::uuid4()->toString(), 'trans_id' => $next_trans_id++, 'trans_tgl' => $payment['payment_date'],
+                    'trans_no_trans' => $payment['payment_no'], 'trans_ket' => $keterangan, 'trans_no_acc' => $no_acc_kas_bank,
+                    'trans_DB' => $invoice->inv_invoice_grand_total, 'trans_CR' => 0.00, 'trans_source' => 'Payment', 'trans_source_uuid' => $payment['payment_uuid'],
+                ]);
+                $db->table('data_2025_trans')->insert([
+                    'trans_uuid' => Uuid::uuid4()->toString(), 'trans_id' => $next_trans_id++, 'trans_tgl' => $payment['payment_date'],
+                    'trans_no_trans' => $payment['payment_no'], 'trans_ket' => $keterangan, 'trans_no_acc' => $no_acc_piutang,
+                    'trans_DB' => 0.00, 'trans_CR' => $invoice->inv_invoice_grand_total, 'trans_source' => 'Payment', 'trans_source_uuid' => $payment['payment_uuid'],
+                ]);
+            } else {
+                // --- JURNAL BAYAR DENGAN PPH 23 (Jurnal Majemuk) ---
+                $dpp = $invoice->inv_invoice_subtotal - $invoice->inv_invoice_discount;
+                $pph_amount = $dpp * 0.02;
+
+                // DEBIT: Kas/Bank (uang yang diterima)
+                $db->table('data_2025_trans')->insert([
+                    'trans_uuid' => Uuid::uuid4()->toString(), 'trans_id' => $next_trans_id++, 'trans_tgl' => $payment['payment_date'],
+                    'trans_no_trans' => $payment['payment_no'], 'trans_ket' => $keterangan, 'trans_no_acc' => $no_acc_kas_bank,
+                    'trans_DB' => $payment['payment_amount'], 'trans_CR' => 0.00, 'trans_source' => 'Payment', 'trans_source_uuid' => $payment['payment_uuid'],
+                ]);
+
+                // DEBIT: Uang Muka PPh 23
+                $db->table('data_2025_trans')->insert([
+                    'trans_uuid' => Uuid::uuid4()->toString(), 'trans_id' => $next_trans_id++, 'trans_tgl' => $payment['payment_date'],
+                    'trans_no_trans' => $payment['payment_no'], 'trans_ket' => 'Potongan PPh 23 ' . $keterangan, 'trans_no_acc' => $no_acc_pph23,
+                    'trans_DB' => $pph_amount, 'trans_CR' => 0.00, 'trans_source' => 'Payment', 'trans_source_uuid' => $payment['payment_uuid'],
+                ]);
+
+                // KREDIT: Piutang Usaha (sebesar grand total)
+                $db->table('data_2025_trans')->insert([
+                    'trans_uuid' => Uuid::uuid4()->toString(), 'trans_id' => $next_trans_id++, 'trans_tgl' => $payment['payment_date'],
+                    'trans_no_trans' => $payment['payment_no'], 'trans_ket' => $keterangan, 'trans_no_acc' => $no_acc_piutang,
+                    'trans_DB' => 0.00, 'trans_CR' => $invoice->inv_invoice_grand_total, 'trans_source' => 'Payment', 'trans_source_uuid' => $payment['payment_uuid'],
+                ]);
+            }
+
+            $db->transComplete();
+            return $db->transStatus();
+
+        } catch (\Exception $e) {
+            log_message('error', 'Exception saat mencatat jurnal pembayaran: ' . $e->getMessage());
+            return false;
+        }
+    }
+}
