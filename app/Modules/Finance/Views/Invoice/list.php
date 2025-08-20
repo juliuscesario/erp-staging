@@ -72,9 +72,9 @@ Daftar Invoice
                                     </a>
 
                                     <?php if ($invoice['inv_invoice_status'] === 'Unpaid'): ?>
-                                        <a href="<?= site_url('fpayment/create/' . $invoice['inv_invoice_uuid']) ?>" class="btn btn-sm btn-success">
+                                        <button type="button" class="btn btn-sm btn-primary pay-button" data-uuid="<?= $invoice['inv_invoice_uuid'] ?>" data-bs-toggle="modal" data-bs-target="#paymentModal">
                                             Buat Pembayaran
-                                        </a>
+                                        </button>
                                     <?php endif; ?>
                                 </td>
                             </tr>
@@ -84,14 +84,40 @@ Daftar Invoice
             </table>
         </div>
     </div>
+    
+    <div class="modal fade" id="paymentModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Form Pembayaran</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                </div>
+            </div>
+        </div>
+    </div>
+    
 <?= $this->endSection() ?>
 
 <?= $this->section('pageScripts') ?>
     <script>
+        //onload invoice table
         $(document).ready(function() {
             $('#invoice-table').DataTable({
                 "order": [] // Nonaktifkan pengurutan default
             });
+        });
+
+        //button payment click
+        $('.pay-button').on('click', function() {
+            let invoiceUUID = $(this).data('uuid');
+            let modalBody = $('#paymentModal .modal-body');
+            
+            modalBody.html('<p class="text-center">Loading...</p>');
+            
+            // Panggil controller untuk mengambil form create via AJAX
+            modalBody.load("<?= site_url('finance/payment/create/') ?>" + invoiceUUID);
         });
     </script>
 <?= $this->endSection() ?>

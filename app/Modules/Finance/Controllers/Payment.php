@@ -105,6 +105,6 @@ class Payment extends BaseController
             return redirect()->back()->with('error', 'Terjadi kesalahan pada database, pembayaran gagal disimpan.');
         }
 
-        return redirect()->to(site_url('fpayment/payment'))->with('success', 'Pembayaran berhasil disimpan dan dijurnal.');
+        return redirect()->to(site_url('finance/invoice'))->with('success', 'Pembayaran berhasil disimpan dan dijurnal.');
     }
 }

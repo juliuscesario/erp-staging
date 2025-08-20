@@ -1,4 +1,4 @@
-<form id="payment-form" action="<?= site_url('fpayment/payment/store') ?>" method="post">
+<form id="payment-form" action="<?= site_url('finance/payment/store') ?>" method="post">
     <?= csrf_field() ?>
     <input type="hidden" name="invoice_uuid" value="<?= esc($invoice['inv_invoice_uuid']) ?>">
     <input type="hidden" id="grand_total" value="<?= esc($invoice['inv_invoice_grand_total']) ?>">

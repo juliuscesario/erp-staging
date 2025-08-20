@@ -1,5 +1,5 @@
 <?php
-namespace Modules\Fpayment\Models;
+namespace Modules\Finance\Models;
 use CodeIgniter\Model;
 
 class PaymentModel extends Model
