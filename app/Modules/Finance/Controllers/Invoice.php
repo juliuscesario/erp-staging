@@ -21,7 +21,7 @@ class Invoice extends BaseController
     {
         $invoiceModel = new \Modules\Finance\Models\MInvoice();
         $data['contracts'] = $invoiceModel->getContractsForInvoicing();
-        return view('Modules\Finance\Views\index', $data);
+        return view('Modules\Finance\Views\Invoice\index', $data);
     }
 
     //Load Invoice Data
@@ -288,7 +288,7 @@ class Invoice extends BaseController
         $full_address = implode(', ', array_filter($address_parts));
         $data['full_address'] = $full_address. ' ' . ($data['invoice']['branch_kode_pos'] ?? '') . ', ' . ($data['invoice']['branch_negara'] ?? '') . ' Telp ' . ($data['invoice']['branch_phone1'] ?? '');
 
-        $html = view('Modules\Finance\Views\print_invoice', $data);
+        $html = view('Modules\Finance\Views\Invoice\print_invoice', $data);
         
         $options = new Options();
         $options->set('isRemoteEnabled', true);
@@ -312,7 +312,7 @@ class Invoice extends BaseController
 
         $data['invoices'] = $builder->get()->getResultArray();
 
-        return view('Modules\Finance\Views\list', $data);
+        return view('Modules\Finance\Views\Invoice\list', $data);
     }
 
     public function detail($invoice_uuid)
@@ -324,7 +324,7 @@ class Invoice extends BaseController
             throw new \CodeIgniter\Exceptions\PageNotFoundException('Invoice tidak ditemukan');
         }
 
-        return view('Modules\Finance\Views\detail', $data);
+        return view('Modules\Finance\Views\Invoice\detail', $data);
     }
 
     
@@ -365,7 +365,7 @@ class Invoice extends BaseController
             return redirect()->to(site_url('finance/invoice/list'))->with('error', 'Invoice yang sudah lunas tidak dapat diubah.');
         }
 
-        return view('Modules\Finance\Views\edit', $data);
+        return view('Modules\Finance\Views\Invoice\edit', $data);
     }
 
     public function update($invoice_uuid)

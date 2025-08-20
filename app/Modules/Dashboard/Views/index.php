@@ -65,7 +65,7 @@ Dashboard Utama
             </a>
         </div>
         <div class="col-lg-3 col-md-6 mb-4">
-            <a href="<?= site_url('fpayment/payment') ?>" class="card shadow-sm dashboard-card h-100">
+            <a href="<?= site_url('finance/payment') ?>" class="card shadow-sm dashboard-card h-100">
                 <div class="card-body">
                     <i class="fas fa-money-check-dollar"></i>
                     <h4>Payment</h4>

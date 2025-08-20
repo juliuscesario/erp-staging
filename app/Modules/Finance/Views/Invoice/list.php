@@ -70,6 +70,12 @@ Daftar Invoice
                                     <a href="<?= site_url('finance/invoice/printPdf/' . $invoice['inv_invoice_uuid']) ?>" target="_blank" class="btn btn-sm btn-info">
                                         Print
                                     </a>
+
+                                    <?php if ($invoice['inv_invoice_status'] === 'Unpaid'): ?>
+                                        <a href="<?= site_url('fpayment/create/' . $invoice['inv_invoice_uuid']) ?>" class="btn btn-sm btn-success">
+                                            Buat Pembayaran
+                                        </a>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php endforeach; ?>

@@ -1,8 +1,8 @@
 <?php
-namespace Modules\FPayment\Controllers;
+namespace Modules\Finance\Controllers;
 use App\Controllers\BaseController;
 use Ramsey\Uuid\Uuid;
-use Modules\FPayment\Models\PaymentModel;
+use Modules\Finance\Models\PaymentModel;
 
 class Payment extends BaseController
 {
@@ -21,7 +21,7 @@ class Payment extends BaseController
         $builder->orderBy('a.inv_invoice_date', 'DESC');
         $data['invoices'] = $builder->get()->getResultArray();
 
-        return view('Modules\FPayment\Views\index', $data);
+        return view('Modules\Finance\Views\Payment\index', $data);
     }
 
     // Method untuk menampilkan form pembayaran via AJAX
@@ -34,7 +34,7 @@ class Payment extends BaseController
             return '<p class="text-danger">Invoice tidak ditemukan.</p>';
         }
 
-        return view('Modules\FPayment\Views\create', $data);
+        return view('Modules\Finance\Views\Payment\create', $data);
     }
 
     // Method untuk menyimpan data pembayaran
