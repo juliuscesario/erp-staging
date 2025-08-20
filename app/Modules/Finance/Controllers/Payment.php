@@ -49,6 +49,7 @@ class Payment extends BaseController
             'payment_amount' => 'required|numeric'
         ]);
 
+        $payment_proof_base64 = $this->request->getPost('payment_proof_base64');
         if (!$validation) {
             return redirect()->back()->withInput()->with('error', $this->validator->listErrors());
         }
@@ -87,6 +88,7 @@ class Payment extends BaseController
             'payment_type'        => $this->request->getPost('payment_type'),
             'payment_amount'      => $this->request->getPost('payment_amount'),
             'payment_reference'   => $this->request->getPost('payment_reference'),
+            'payment_proof'       => $payment_proof_base64 
         ];
 
         $paymentModel->insert($paymentData);
@@ -105,6 +107,6 @@ class Payment extends BaseController
             return redirect()->back()->with('error', 'Terjadi kesalahan pada database, pembayaran gagal disimpan.');
         }
 
-        return redirect()->to(site_url('finance/invoice'))->with('success', 'Pembayaran berhasil disimpan dan dijurnal.');
+        return redirect()->to(site_url('finance/invoice/list'))->with('success', 'Pembayaran berhasil disimpan dan dijurnal.');
     }
 }

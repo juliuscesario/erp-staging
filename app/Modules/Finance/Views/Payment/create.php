@@ -5,7 +5,8 @@
     <input type="hidden" id="subtotal" value="<?= esc($invoice['inv_invoice_subtotal']) ?>">
     <input type="hidden" id="discount" value="<?= esc($invoice['inv_invoice_discount'] ?? 0) ?>">
     <input type="hidden" id="ppn_total" value="<?= esc($invoice['inv_invoice_ppn_total']) ?>">
-
+    <input type="hidden" name="payment_proof_base64" id="payment_proof_base64">
+    
     <div class="mb-3">
         <label>No. Invoice</label>
         <input type="text" class="form-control" value="<?= esc($invoice['inv_invoice_no']) ?>" readonly>
@@ -36,6 +37,10 @@
         </select>
     </div>
     <div class="mb-3">
+        <label for="payment_proof_file" class="form-label">Bukti Pembayaran</label>
+        <input class="form-control" type="file" id="payment_proof_file" name="payment_proof_file" accept="image/*,.pdf">
+    </div>
+    <div class="mb-3">
         <label for="payment_reference" class="form-label">Catatan/Referensi</label>
         <textarea name="payment_reference" id="payment_reference" class="form-control"></textarea>
     </div>
@@ -45,6 +50,21 @@
 
 <script>
     $(document).ready(function() {
+        // Event listener untuk input file
+        $('#payment_proof_file').on('change', function(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    // Simpan hasil base64 ke input hidden
+                    $('#payment_proof_base64').val(e.target.result);
+                };
+                reader.readAsDataURL(file);
+            } else {
+                $('#payment_proof_base64').val('');
+            }
+        });
+
         $('#payment_type').on('change', function() {
             let paymentType = $(this).val();
             let grandTotal = parseFloat($('#grand_total').val()) || 0;
