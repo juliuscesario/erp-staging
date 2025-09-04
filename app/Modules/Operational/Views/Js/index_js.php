@@ -179,22 +179,30 @@ $(document).ready(function() {
         
         $('#signature-data').val(signaturePad.toDataURL());
 
-        // Gunakan FormData untuk mengumpulkan semua input, TERMASUK FILE
-            let formData = new FormData(this);
+        // Gunakan FormData untuk mengumpulkan semua input
+        let formData = new FormData(this);
 
-        // Ambil data item dari tabel dan tambahkan ke FormData
+        // Ambil data item dari tabel dan tambahkan ke FormData dengan index unik
+        let item_counter = 0;
         $('#checklist-body tr').each(function() {
             let row = $(this);
             let inv_uuid = row.data('inventory-uuid');
             
+            // Kirim inventory_uuid sebagai bagian dari data item
+            formData.append(`items[${item_counter}][inventory_uuid]`, inv_uuid);
+            
             // Tambahkan data building dan room ke form
-            formData.append(`items[${inv_uuid}][building_uuid]`, row.data('building-uuid'));
-            formData.append(`items[${inv_uuid}][room_uuid]`, row.data('room-uuid'));
+            formData.append(`items[${item_counter}][building_uuid]`, row.data('building-uuid'));
+            formData.append(`items[${item_counter}][room_uuid]`, row.data('room-uuid'));
 
             // Tambahkan data input dari setiap baris
-            formData.append(`items[${inv_uuid}][problem]`, row.find('input[name="problem"]').val());
-            formData.append(`items[${inv_uuid}][action]`, row.find('input[name="action"]').val());
-            formData.append(`items[${inv_uuid}][work_duration]`, row.find('input[name="work_duration"]').val());
+            formData.append(`items[${item_counter}][problem]`, row.find('input[name="problem"]').val());
+            formData.append(`items[${item_counter}][action]`, row.find('input[name="action"]').val());
+            formData.append(`items[${item_counter}][work_duration]`, row.find('input[name="work_duration"]').val());
+            // Kirim data base64 dari hidden input
+            formData.append(`items[${item_counter}][photo_base64]`, row.find('.photo-base64-input').val());
+
+            item_counter++;
         });
 
         // Kirim data via AJAX menggunakan FormData

@@ -58,7 +58,7 @@ class MaterialRequest extends BaseController
         $builder->orderBy('a.wr_matrequest_id', 'DESC'); // Tampilkan yang terbaru di atas
 
         $data['material_requests'] = $builder->get()->getResultArray();
-
+        print_r($data);exit;
         // Kita akan membuat view baru bernama 'list.php'
         return view('Modules\Warehouse\Views\list', $data);
     }

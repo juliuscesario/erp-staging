@@ -67,12 +67,13 @@ class MOprService extends Model
         $builder->groupBy('s.opr_schedule_uuid');
         $data['main'] = $builder->get()->getRowArray();
 
-        // Langkah 2: Jika data header ditemukan, lanjutkan
+        //Langkah 2 set main
         if ($data['main']) {
             $data['pics'] = $this->db->table('m_cust_pic')->where('cust_pic_cust_uuid', $data['main']['cust_uuid'])->get()->getResultArray();
 
             if ($type === 'schedule') {
                 // Untuk halaman create, ambil checklist aset dari MR periode 1
+                // INI YANG MEMANGGIL FUNGSI YANG KITA UBAH
                 $data['assets'] = $this->getAssetChecklist($data['main']['mkt_contract_uuid'], $data['main']['mkt_contract_quotation_uuid']);
             } else {
                 // Untuk halaman detail/edit, ambil item yang sudah tersimpan
@@ -92,28 +93,51 @@ class MOprService extends Model
     // Fungsi private untuk mengambil checklist, hanya dipakai di dalam model ini
     private function getAssetChecklist($contract_uuid, $quotation_uuid)
     {
-        //CHECK INSTALLATION SCHEDULE
+        //CHECK INSTALLATION SCHEDULE (Periode 1)
         $installation_schedule = $this->db->table('opr_schedule')
-                                          ->where(['opr_schedule_contract_uuid' => $contract_uuid, 'opr_schedule_period_run' => 1])
-                                          ->get()->getRow();
+                                        ->where(['opr_schedule_contract_uuid' => $contract_uuid, 'opr_schedule_period_run' => 1])
+                                        ->get()->getRow();
         if (!$installation_schedule) return [];
-        //CHECK MATERIAL REQUEST
+
+        //CHECK MATERIAL REQUEST berdasarkan jadwal instalasi
         $material_request = $this->db->table('wr_matrequest')
-                                     ->where('wr_matrequest_opr_schedule_uuid', $installation_schedule->opr_schedule_uuid)
-                                     ->get()->getRow();
+                                    ->where('wr_matrequest_opr_schedule_uuid', $installation_schedule->opr_schedule_uuid)
+                                    ->get()->getRow();
         if (!$material_request) return [];
 
+        // Query untuk mengambil item dari Material Request, bukan lagi dari Quotation
         $asset_builder = $this->db->table('wr_matrequest_item as mri');
-        $asset_builder->select('mri.wr_matrequest_item_inventory_uuid, inv.inventory_kode, inv.inventory_name, room.room_name, qo.mkt_quotation_order_building_uuid, qo.mkt_quotation_order_room_uuid');
+        $asset_builder->select('
+            mri.wr_matrequest_item_inventory_uuid, 
+            mri.wr_matrequest_item_item_qty,
+            inv.inventory_kode, 
+            inv.inventory_name, 
+            room.room_name, 
+            bldg.building_name,
+            qo.mkt_quotation_order_building_uuid, 
+            qo.mkt_quotation_order_room_uuid
+        ');
         $asset_builder->join('m_inventory as inv', 'mri.wr_matrequest_item_inventory_uuid = inv.inventory_uuid');
-        $asset_builder->join('mkt_quotation_order as qo', 'inv.inventory_uuid = qo.mkt_quotation_order_unit_inventory_uuid', 'left');
+        // Join ke quotation_order tetap dibutuhkan untuk mendapatkan info lokasi (gedung & ruangan)
+        $asset_builder->join('mkt_quotation_order as qo', 'inv.inventory_uuid = qo.mkt_quotation_order_unit_inventory_uuid AND qo.mkt_quotation_order_quotation_uuid = \''.$quotation_uuid.'\'', 'left');
         $asset_builder->join('m_room as room', 'qo.mkt_quotation_order_room_uuid = room.room_uuid', 'left');
+        $asset_builder->join('m_building as bldg', 'qo.mkt_quotation_order_building_uuid = bldg.building_uuid', 'left');
         $asset_builder->where('mri.wr_matrequest_item_matrequest_uuid', $material_request->wr_matrequest_uuid);
-        $asset_builder->where('qo.mkt_quotation_order_quotation_uuid', $quotation_uuid);
         $asset_builder->where('inv.inventory_jenis', 'Asset');
-        $asset_builder->groupBy('mri.wr_matrequest_item_inventory_uuid');
         
-        return $asset_builder->get()->getResultArray();
+        $results = $asset_builder->get()->getResultArray();
+
+        // LOGIKA BARU: Splitting item berdasarkan kuantitas
+        $final_checklist = [];
+        foreach ($results as $item) {
+            $qty = (int)$item['wr_matrequest_item_item_qty'];
+            for ($i = 0; $i < $qty; $i++) {
+                // Setiap unit akan menjadi satu baris di checklist
+                $final_checklist[] = $item;
+            }
+        }
+
+        return $final_checklist;
     }
 
     //Build Data Table Query

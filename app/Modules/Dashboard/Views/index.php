@@ -80,5 +80,13 @@ Dashboard Utama
                 </div>
             </a>
         </div>
+        <div class="text-center mt-5">
+            <a href="<?= site_url('dashboard/home/reset_data') ?>" 
+            class="btn btn-danger" 
+            onclick="return confirm('Apakah Anda yakin ingin menghapus SEMUA data transaksi? Tindakan ini tidak dapat dibatalkan!')">
+                <i class="fas fa-trash"></i> Reset Semua Data Transaksi
+            </a>
+            <p class="text-muted small mt-2">Gunakan tombol ini hanya untuk keperluan testing/development.</p>
+        </div>
     </div>
 <?= $this->endSection() ?>

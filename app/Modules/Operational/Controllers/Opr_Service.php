@@ -364,7 +364,7 @@ class Opr_Service extends BaseController
         return redirect()->to(site_url('operational/opr_service/detail/' . $uuid))->with('success', 'Job Service berhasil diperbarui.');
     }
 
-     //FUNGSI STORE
+    //FUNGSI STORE
     public function store()
     {
         $db = \Config\Database::connect();
@@ -374,12 +374,11 @@ class Opr_Service extends BaseController
             $MOprService = new \Modules\Operational\Models\MOprService();
             $MOprServiceItem = new \Modules\Operational\Models\MOprServiceItem();
 
-            // FIX #1: Logika Penomoran ID & No. Service
+            // Logika Penomoran ID & No. Service
             $lastIdRow = $MOprService->selectMax('opr_service_id', 'last_id')->get()->getRow();
             $new_id = ($lastIdRow ? $lastIdRow->last_id : 0) + 1;
             $new_no = sprintf('SR-ART/%s-%s/%04d', date('m'), date('y'), $new_id);
 
-            // FIX #2: Cari UUID Material Request untuk periode > 1
             $schedule_uuid = $this->request->getPost('schedule_uuid');
             $refill_mr = $db->table('wr_matrequest')->where('wr_matrequest_opr_schedule_uuid', $schedule_uuid)->get()->getRow();
             $refill_mr_uuid = $refill_mr ? $refill_mr->wr_matrequest_uuid : null;
@@ -393,37 +392,36 @@ class Opr_Service extends BaseController
                 'opr_service_date' => date('Y-m-d'),
                 'opr_service_schedule_uuid' => $schedule_uuid,
                 'opr_service_cust_pic_uuid' => $this->request->getPost('cust_pic_uuid'),
-                'opr_service_cust_pic_sign' => $this->request->getPost('cust_sign_image'),
-                // --- PERBAIKAN DI SINI ---
                 'opr_service_cust_sign_name' => $this->request->getPost('cust_sign_name'),
                 'opr_service_cust_sign_position' => $this->request->getPost('cust_sign_position'),
                 'opr_service_cust_pic_sign' => $this->request->getPost('cust_sign_image'),
-                'opr_service_work_duration' => $this->request->getPost('work_duration'),
-                'opr_service_status' => 'Pending',
+                'opr_service_work_duration' => $this->request->getPost('work_duration'), // Jika ada
+                'opr_service_status' => 'Pending', // Status awal
             ];
             $MOprService->insert($mainData);
 
             // Loop dan simpan item
             $items = $this->request->getPost('items');
-            $photos = $this->request->getFiles();
             $item_id_counter = 1;
 
-            foreach ($items as $inv_uuid => $item_data) {
-                $itemData = [
-                    'opr_service_item_uuid' => Uuid::uuid4()->toString(),
-                    'opr_service_item_id'   => $item_id_counter++, // FIX #1
-                    'opr_service_item_service_uuid' => $serviceUUID,
-                    'opr_service_matrequest_uuid' => $refill_mr_uuid, // FIX #2
-                    'opr_service_item_inventory_uuid' => $inv_uuid,
-                    'opr_service_item_building_uuid' => $item_data['building_uuid'], // FIX #3
-                    'opr_service_item_room_uuid' => $item_data['room_uuid'], // FIX #3
-                    'opr_service_item_problem' => $item_data['problem'],
-                    'opr_service_item_action' => $item_data['action'],
-                    'opr_service_item_operation' => $item_data['work_duration'],
-                    'opr_service_item_image' => $item_data['photo_base64'] ?? null, // Ambil Base64 dari POST
-                    'opr_service_item_status' => 'Pending',
-                ];
-                $MOprServiceItem->insert($itemData);
+            if (!empty($items)) {
+                foreach ($items as $item_data) {
+                    $itemData = [
+                        'opr_service_item_uuid' => Uuid::uuid4()->toString(),
+                        'opr_service_item_id'   => $item_id_counter++,
+                        'opr_service_item_service_uuid' => $serviceUUID,
+                        'opr_service_matrequest_uuid' => $refill_mr_uuid,
+                        'opr_service_item_inventory_uuid' => $item_data['inventory_uuid'],
+                        'opr_service_item_building_uuid' => $item_data['building_uuid'],
+                        'opr_service_item_room_uuid' => $item_data['room_uuid'],
+                        'opr_service_item_problem' => $item_data['problem'],
+                        'opr_service_item_action' => $item_data['action'],
+                        'opr_service_item_operation' => $item_data['work_duration'],
+                        'opr_service_item_image' => $item_data['photo_base64'] ?: null, // Ambil Base64 dari POST
+                        'opr_service_item_status' => 'Pending',
+                    ];
+                    $MOprServiceItem->insert($itemData);
+                }
             }
             
             // Update status opr_schedule menjadi 'Done'
