@@ -1,122 +1,116 @@
 <?php
+
 namespace Modules\Warehouse\Controllers;
+
 use App\Controllers\BaseController;
 use Ramsey\Uuid\Uuid;
-// Tambahkan/Lengkapi use statement untuk QR Code
 use Endroid\QrCode\Color\Color;
 use Endroid\QrCode\Encoding\Encoding;
 use Endroid\QrCode\ErrorCorrectionLevel;
 use Endroid\QrCode\QrCode;
-use Endroid\QrCode\Label\Label;
-use Endroid\QrCode\Logo\Logo;
 use Endroid\QrCode\Writer\PngWriter;
-use Endroid\QrCode\Label\Font\NotoSans;
-use Endroid\QrCode\RoundBlockSizeMode;
-// Call Models for Save
 use Modules\Warehouse\Models\MatrequestModel;
 use Modules\Warehouse\Models\MatrequestItemModel;
-// Call PDF 
 use Dompdf\Dompdf;
 use Dompdf\Options;
 
 class MaterialRequest extends BaseController
 {
-    //INDEX
-    public function create($contractUUID)
-    {
-        $db = \Config\Database::connect();
-       
-        $builder = $db->table('opr_schedule as a');
-        $builder->select('a.opr_schedule_uuid, a.opr_schedule_id, a.opr_schedule_date'); // Ambil kolom yang diperlukan 
-        $builder->join('mkt_contract as b', 'a.opr_schedule_contract_uuid = b.mkt_contract_uuid', 'left');
-        $builder->where('b.mkt_contract_uuid', $contractUUID);
-        $builder->orderBy('a.opr_schedule_date', 'DESC'); // Urutkan berdasarkan tanggal terbaru
-        $schedules = $builder->get()->getResultArray();
-
-        // 3. Siapkan data untuk dikirim ke view
-        $data['schedules'] = $schedules;
-
-        // TAMBAHAN: Ambil data karyawan
-        $karyawanBuilder = $db->table('m_karyawan');
-        $karyawanBuilder->select('kar_uuid, kar_name');
-        $karyawanBuilder->where('kar_aktif', 'Ya');
-        $data['karyawan'] = $karyawanBuilder->get()->getResultArray();
-
-        // 4. Kirim data ke view saat memuatnya
-        return view('Modules\Warehouse\Views\create', $data);
-    }
-
-    //INDEX LIST
     public function index()
     {
         $db = \Config\Database::connect();
-        
-        // Query untuk mengambil data MR dan menggabungkannya dengan nomor kontrak
         $builder = $db->table('wr_matrequest as a');
-        $builder->select('a.wr_matrequest_uuid, a.wr_matrequest_no, a.wr_matrequest_date, a.wr_matrequest_status, b.mkt_contract_no, b.mkt_contract_uuid');
-        $builder->join('mkt_contract as b', 'a.wr_matrequest_contract_uuid = b.mkt_contract_uuid', 'left');
-        $builder->orderBy('a.wr_matrequest_id', 'DESC'); // Tampilkan yang terbaru di atas
-
+        $builder->select('a.wr_matrequest_uuid, a.wr_matrequest_no, a.wr_matrequest_date, a.wr_matrequest_status, c.mkt_contract_no, c.mkt_contract_uuid');
+        $builder->join('opr_schedule as b', 'a.wr_matrequest_opr_schedule_uuid = b.opr_schedule_uuid', 'left');
+        $builder->join('mkt_contract as c', 'b.opr_schedule_contract_uuid = c.mkt_contract_uuid', 'left');
+        $builder->orderBy('a.wr_matrequest_id', 'DESC');
         $data['material_requests'] = $builder->get()->getResultArray();
-        print_r($data);exit;
-        // Kita akan membuat view baru bernama 'list.php'
         return view('Modules\Warehouse\Views\list', $data);
     }
 
-    //INDEX DETAIL
+    public function create($contractUUID)
+    {
+        $db = \Config\Database::connect();
+        $subquery = $db->table('wr_matrequest')->select('wr_matrequest_opr_schedule_uuid');
+        $builder = $db->table('opr_schedule');
+        $builder->select('opr_schedule_uuid, opr_schedule_id, opr_schedule_date');
+        $builder->where('opr_schedule_contract_uuid', $contractUUID)->whereNotIn('opr_schedule_uuid', $subquery);
+        $builder->orderBy('opr_schedule_date', 'ASC');
+        $data['schedules'] = $builder->get()->getResultArray();
+        
+        $karyawanBuilder = $db->table('m_karyawan')->select('kar_uuid, kar_name')->where('kar_aktif', 'Ya');
+        $data['karyawan'] = $karyawanBuilder->get()->getResultArray();
+        
+        $data['new_matrequest_uuid'] = Uuid::uuid4()->toString();
+        $data['contract_uuid'] = $contractUUID; 
+        return view('Modules\Warehouse\Views\create', $data);
+    }
+
     public function detail($uuid)
     {
         $db = \Config\Database::connect();
-
-        // Query 1: Ambil data utama MR dan join ke tabel lain
         $main_builder = $db->table('wr_matrequest as a');
-        $main_builder->select('a.*, b.mkt_contract_no, c.opr_schedule_date, k1.kar_name as nama_pemberi, k2.kar_name as nama_penerima');
-        $main_builder->join('mkt_contract as b', 'a.wr_matrequest_contract_uuid = b.mkt_contract_uuid', 'left');
-        $main_builder->join('opr_schedule as c', 'a.wr_matrequest_opr_schedule_uuid = c.opr_schedule_uuid', 'left');
-        // Join ke tabel karyawan untuk penanda tangan pertama
+        $main_builder->select('a.*, c.mkt_contract_no, b.opr_schedule_date, k1.kar_name as nama_pemberi, k2.kar_name as nama_penerima');
+        $main_builder->join('opr_schedule as b', 'a.wr_matrequest_opr_schedule_uuid = b.opr_schedule_uuid', 'left');
+        $main_builder->join('mkt_contract as c', 'b.opr_schedule_contract_uuid = c.mkt_contract_uuid', 'left');
         $main_builder->join('m_karyawan as k1', 'a.wr_matrequest_kar_uuid_sign1 = k1.kar_uuid', 'left');
-        // Join ke tabel karyawan untuk penanda tangan kedua
         $main_builder->join('m_karyawan as k2', 'a.wr_matrequest_kar_uuid_sign2 = k2.kar_uuid', 'left');
         $main_builder->where('a.wr_matrequest_uuid', $uuid);
-        $data['mr'] = $main_builder->get()->getRow();
+        $data['mr'] = $main_builder->get()->getRowArray();
 
-        // Jika data tidak ditemukan, tampilkan 404
-        if (!$data['mr']) {
-            throw new \CodeIgniter\Exceptions\PageNotFoundException('Material Request tidak ditemukan');
-        }
+        if (!$data['mr']) throw new \CodeIgniter\Exceptions\PageNotFoundException('Material Request tidak ditemukan');
 
-        // Query 2: Ambil semua item yang terkait dengan MR ini
         $item_builder = $db->table('wr_matrequest_item as a');
         $item_builder->select('a.*, b.inventory_kode, b.inventory_name');
         $item_builder->join('m_inventory as b', 'a.wr_matrequest_item_inventory_uuid = b.inventory_uuid', 'left');
         $item_builder->where('a.wr_matrequest_item_matrequest_uuid', $uuid);
-        $data['items'] = $item_builder->get()->getResult();
-
-        // Kita akan membuat view baru bernama 'detail.php'
+        $items_raw = $item_builder->get()->getResultArray();
+        
+        $data['items'] = [];
+        $writer = new PngWriter();
+        foreach($items_raw as $item) {
+            $decoded_data = json_decode($item['wr_matrequest_item_batch_uuid'], true);
+            if(json_last_error() === JSON_ERROR_NONE && $decoded_data) {
+                // Ambil data lokasi jika ada
+                $item['building_name'] = isset($decoded_data['building_uuid']) ? $db->table('m_building')->where('building_uuid', $decoded_data['building_uuid'])->get()->getRow('building_name') : 'Gudang';
+                $item['room_name'] = isset($decoded_data['room_uuid']) ? $db->table('m_room')->where('room_uuid', $decoded_data['room_uuid'])->get()->getRow('room_name') : '';
+                
+                // Generate ulang QR image dari link yang disimpan
+                if(isset($decoded_data['qr_link'])) {
+                    $qrCode = new QrCode($decoded_data['qr_link']);
+                    $item['qrcode_image'] = $writer->write($qrCode)->getDataUri();
+                } else {
+                    $item['qrcode_image'] = null;
+                }
+            } else {
+                $item['building_name'] = 'Gudang';
+                $item['room_name'] = '';
+                $item['qrcode_image'] = null;
+            }
+            $data['items'][] = $item;
+        }
+        
+        $data['cont'] = 'warehouse/materialrequest';
         return view('Modules\Warehouse\Views\detail', $data);
     }
     
-    //GENERATE ITEMS
+    // Fungsi AJAX untuk generate item list
     public function generate_items()
     {
-        // Langkah 1: Ambil UUID Jadwal & inisialisasi database
         $schedule_uuid = $this->request->getPost('schedule_uuid');
+        $new_matrequest_uuid = $this->request->getPost('matrequest_uuid');
         $db = \Config\Database::connect();
 
-        // Langkah 2: Ambil detail jadwal untuk mendapatkan `period_run`
         $schedule = $db->table('opr_schedule')->where('opr_schedule_uuid', $schedule_uuid)->get()->getRow();
-        if (!$schedule) {
-            return $this->response->setJSON([]); // Keluar jika jadwal tidak ditemukan
-        }
+        if (!$schedule) return $this->response->setJSON([]);
+        
         $period_run = $schedule->opr_schedule_period_run;
 
-        // Langkah 3: Ambil semua item mentah yang terkait dengan jadwal ini
         $item_builder = $db->table('opr_schedule as a');
         $item_builder->select([
-            'd.mkt_quotation_order_unit_inventory_uuid',
-            'd.mkt_quotation_order_oil_inventory_uuid',
-            'd.mkt_quotation_order_item_qty',
-            'b.mkt_contract_uuid'
+            'd.mkt_quotation_order_unit_inventory_uuid', 'd.mkt_quotation_order_oil_inventory_uuid',
+            'd.mkt_quotation_order_item_qty', 'd.mkt_quotation_order_building_uuid',
+            'd.mkt_quotation_order_room_uuid', 'b.mkt_contract_uuid'
         ]);
         $item_builder->join('mkt_contract as b', 'a.opr_schedule_contract_uuid = b.mkt_contract_uuid');
         $item_builder->join('mkt_quotation as c', 'b.mkt_contract_quotation_uuid = c.mkt_quotation_uuid');
@@ -124,200 +118,131 @@ class MaterialRequest extends BaseController
         $item_builder->where('a.opr_schedule_uuid', $schedule_uuid);
         $quotation_items = $item_builder->get()->getResultArray();
 
-        if (empty($quotation_items)) {
-            return $this->response->setJSON([]); // Keluar jika tidak ada item terkait
-        }
+        if (empty($quotation_items)) return $this->response->setJSON([]);
 
-        // Langkah 4: Proses dan Gabungkan (Grouping) item
-        $grouped_items = [];
-        foreach ($quotation_items as $item) {
-            $inventory_uuids = [
-                $item['mkt_quotation_order_unit_inventory_uuid'],
-                $item['mkt_quotation_order_oil_inventory_uuid']
-            ];
-            foreach ($inventory_uuids as $inv_uuid) {
-                if (!empty($inv_uuid)) {
-                    $details = $db->table('m_inventory')->where('inventory_uuid', $inv_uuid)->get()->getRowArray();
-                    if ($details) {
-                        if (!isset($grouped_items[$inv_uuid])) {
-                            $grouped_items[$inv_uuid] = ['kode' => $details['inventory_kode'], 'nama' => $details['inventory_name'], 'jenis' => $details['inventory_jenis'], 'qty' => 0];
-                        }
-                        $grouped_items[$inv_uuid]['qty'] += $item['mkt_quotation_order_item_qty'];
+        $processed_items = [];
+        $grouped_non_assets = [];
+
+        foreach ($quotation_items as $q_item) {
+            $unit_uuid = $q_item['mkt_quotation_order_unit_inventory_uuid'];
+            if (!empty($unit_uuid)) {
+                $unit_details = $db->table('m_inventory')->where('inventory_uuid', $unit_uuid)->get()->getRowArray();
+                
+                $building_name = $db->table('m_building')->select('building_name')->where('building_uuid', $q_item['mkt_quotation_order_building_uuid'])->get()->getRow('building_name') ?? '';
+                $room_name = $db->table('m_room')->select('room_name')->where('room_uuid', $q_item['mkt_quotation_order_room_uuid'])->get()->getRow('room_name') ?? '';
+                $lokasi = $building_name . ' / ' . $room_name;
+
+                if ($unit_details && $unit_details['inventory_jenis'] === 'Asset' && $period_run == 1) {
+                    for ($i = 0; $i < (int)$q_item['mkt_quotation_order_item_qty']; $i++) {
+                        $item_instance_uuid = Uuid::uuid4()->toString();
+                        $qr_link = site_url("qrcode/verify/{$q_item['mkt_contract_uuid']}/{$new_matrequest_uuid}/{$item_instance_uuid}");
+                        
+                        $writer = new PngWriter();
+                        $qrCode = new QrCode(
+                            $qr_link, new Encoding('UTF-8'), ErrorCorrectionLevel::High,
+                            300, 10, null, new Color(0, 0, 0), new Color(255, 255, 255)
+                        );
+                        
+                        $qr_base64 = $writer->write($qrCode)->getDataUri();
+                        
+                        $processed_items[] = [
+                            'inventory_uuid' => $unit_uuid,
+                            'building_uuid' => $q_item['mkt_quotation_order_building_uuid'],
+                            'room_uuid' => $q_item['mkt_quotation_order_room_uuid'],
+                            'kode' => $unit_details['inventory_kode'], 
+                            'nama' => $unit_details['inventory_name'], 
+                            'qty' => 1, 'lokasi' => $lokasi, 
+                            'qrcode' => $qr_base64, 'qrcode_link' => $qr_link,
+                        ];
                     }
                 }
             }
-        }
 
-        // Langkah 5: Filter item berdasarkan `period_run` dan buat array final
-        $processed_items = [];
-        $new_matrequest_uuid = Uuid::uuid4()->toString();
-        foreach ($grouped_items as $uuid => $item_data) {
-            $should_include = false;
-            if ($period_run == 1) { // Bulan pertama, masukkan semua item
-                $should_include = true;
-            } elseif ($item_data['jenis'] !== 'Asset') { // Bulan > 1, masukkan hanya yang BUKAN Asset
-                $should_include = true;
-            }
-
-            if ($should_include) {
-                $qr_base64 = null;
-                $qr_link = null;
-                if ($period_run == 1 && $item_data['jenis'] === 'Asset') {
-                    $qr_link = "http://staging-erp.perks.id/qrcode/verify/{$quotation_items[0]['mkt_contract_uuid']}/{$new_matrequest_uuid}";
-                   // SINTAKS BARU SESUAI CONTOH KLIEN
-                    $qrCode = new QrCode(
-                        data: $qr_link,
-                        encoding: new Encoding('UTF-8'),
-                        errorCorrectionLevel: ErrorCorrectionLevel::High,
-                        size: 300, // Ukuran disesuaikan agar tidak terlalu besar di tabel
-                        margin: 10,
-                        roundBlockSizeMode: RoundBlockSizeMode::Margin,
-                        foregroundColor: new Color(0, 0, 0),
-                        backgroundColor: new Color(255, 255, 255)
-                    );
-                    $writer = new PngWriter();
-                    $qr_base64 = $writer->write($qrCode)->getDataUri();
+            $oil_uuid = $q_item['mkt_quotation_order_oil_inventory_uuid'];
+            if (!empty($oil_uuid)) {
+                if (!isset($grouped_non_assets[$oil_uuid])) {
+                     $oil_details = $db->table('m_inventory')->where('inventory_uuid', $oil_uuid)->get()->getRowArray();
+                     if($oil_details) {
+                        $grouped_non_assets[$oil_uuid] = ['inventory_uuid' => $oil_uuid, 'kode' => $oil_details['inventory_kode'], 'nama' => $oil_details['inventory_name'], 'qty' => 0, 'lokasi' => 'Gudang', 'qrcode' => null, 'qrcode_link' => null, 'building_uuid' => null, 'room_uuid' => null];
+                     }
                 }
-                $processed_items[] = [
-                    'inventory_uuid' => $uuid,
-                    'kode'   => $item_data['kode'],
-                    'nama'   => $item_data['nama'],
-                    'qty'    => $item_data['qty'],
-                    'qrcode' => $qr_base64,       // Gambar Base64
-                    'qrcode_link' => $qr_link    // <-- TAMBAHAN BARU: URL Asli
-                ];
+                if (isset($grouped_non_assets[$oil_uuid])) {
+                    $grouped_non_assets[$oil_uuid]['qty'] += $q_item['mkt_quotation_order_item_qty'];
+                }
             }
         }
-
-        // Langkah 6: Urutkan hasil akhir
-        usort($processed_items, function ($a, $b) {
-            $aHasQr = !is_null($a['qrcode']);
-            $bHasQr = !is_null($b['qrcode']);
-            if ($aHasQr === $bHasQr) return 0;
-            return $aHasQr ? -1 : 1;
-        });
-
-        // Langkah 7: Kembalikan sebagai respons JSON
-        return $this->response->setJSON($processed_items);
-    }
-
-    //CHECK SCHEDULE <UDAH GAK KEPAKE?
-    public function check_schedule()
-    {
-        $schedule_uuid = $this->request->getPost('schedule_uuid');
         
-        $db = \Config\Database::connect();
-        $builder = $db->table('opr_schedule');
-        $builder->select('opr_schedule_period_run');
-        $builder->where('opr_schedule_uuid', $schedule_uuid);
-        $schedule = $builder->get()->getRow();
+        $final_items = array_merge($processed_items, array_values($grouped_non_assets));
+        usort($final_items, fn($a, $b) => ($a['qrcode'] === null) - ($b['qrcode'] === null));
 
-        // Kembalikan true HANYA jika period_run adalah 1
-        $has_items = ($schedule && $schedule->opr_schedule_period_run == 1);
-
-        return $this->response->setJSON(['has_items' => true]);
+        return $this->response->setJSON($final_items);
     }
-
-    //Store 
-    public function store()
+    
+   public function store()
     {
-        // Ambil data JSON dari POST request
-        
         $json = json_decode($this->request->getBody());
         $db = \Config\Database::connect();
-
         try {
-
-            // 2. Gunakan Database Transaction untuk keamanan data
             $db->transStart();
-
             $matRequestModel = new MatrequestModel();
             $matRequestItemModel = new MatrequestItemModel();
 
-            // 1. Dapatkan ID terakhir dan tambahkan 1
             $lastId = $matRequestModel->selectMax('wr_matrequest_id', 'last_id')->get()->getRow('last_id');
             $new_id = ($lastId ?? 0) + 1;
-
-            // 2. Buat nomor MR sesuai format: MR-ART/bulan-tahun/nomor urut
             $new_no = sprintf('MR-ART/%s-%s/%04d', date('m'), date('y'), $new_id);
             
-            $matRequestUUID = Uuid::uuid4()->toString();
-            $contractUUID = $db->table('opr_schedule')
-                               ->select('opr_schedule_contract_uuid')
-                               ->where('opr_schedule_uuid', $json->schedule_uuid)
-                               ->get()->getRow()->opr_schedule_contract_uuid;
-
-            // 3. Siapkan & simpan data utama ke tabel wr_matrequest
             $mainData = [
-                'wr_matrequest_uuid' => $matRequestUUID,
-                'wr_matrequest_id'   => $new_id, // Placeholder untuk ID unik
-                'wr_matrequest_no'   => $new_no, // Contoh penomoran
-                'wr_matrequest_date' => date('Y-m-d'),
-                'wr_matrequest_opr_schedule_uuid' => $json->schedule_uuid,
-                'wr_matrequest_contract_uuid' => $contractUUID,
-                'wr_matrequest_kar_uuid_sign1' => $json->kar_uuid_1, // Ambil UUID Karyawan 1
-                'wr_matrequest_sign1' => $json->signature_data_1,
-                'wr_matrequest_kar_uuid_sign2' => $json->kar_uuid_2, // Ambil UUID Karyawan 1
-                'wr_matrequest_sign2' => $json->signature_data_2,
+                'wr_matrequest_uuid' => $json->matrequest_uuid, 'wr_matrequest_id' => $new_id, 'wr_matrequest_no' => $new_no,
+                'wr_matrequest_date' => date('Y-m-d'), 'wr_matrequest_opr_schedule_uuid' => $json->schedule_uuid,
+                'wr_matrequest_kar_uuid_sign1' => $json->kar_uuid_1, 'wr_matrequest_sign1' => $json->signature_data_1,
+                'wr_matrequest_kar_uuid_sign2' => $json->kar_uuid_2, 'wr_matrequest_sign2' => $json->signature_data_2,
                 'wr_matrequest_status' => 'Pending'
-                // 'wr_matrequest_created_by' => user_id(), // Ambil dari sesi login
             ];
             $matRequestModel->insert($mainData);
 
-            // 4. Loop & simpan setiap item ke tabel wr_matrequest_item
             $item_id_counter = 1;
             foreach ($json->items as $item) {
-               $itemData = [
-                    'wr_matrequest_item_matrequest_uuid' => $matRequestUUID,
-                    'wr_matrequest_item_id'   => $item_id_counter++,
+                // **PERBAIKAN UTAMA DI SINI**
+                // Gabungkan data lokasi dan QR link ke dalam satu JSON
+                $batch_data = null;
+                if (!empty($item->building_uuid) || !empty($item->qrcode_link)) {
+                    $temp_data = [];
+                    if(!empty($item->building_uuid)) $temp_data['building_uuid'] = $item->building_uuid;
+                    if(!empty($item->room_uuid)) $temp_data['room_uuid'] = $item->room_uuid;
+                    if(!empty($item->qrcode_link)) $temp_data['qr_link'] = $item->qrcode_link;
+                    $batch_data = json_encode($temp_data);
+                }
+                
+                $itemData = [
+                    'wr_matrequest_item_matrequest_uuid' => $json->matrequest_uuid, 'wr_matrequest_item_id' => $item_id_counter++,
                     'wr_matrequest_item_inventory_uuid' => $item->inventory_uuid,
-                    'wr_matrequest_item_qrcode_link' => $item->qrcode_link,
-                    'wr_matrequest_item_qrcode_image' => $item->qrcode,
+                    'wr_matrequest_item_batch_uuid' => $batch_data, // Simpan JSON di sini
                     'wr_matrequest_item_item_qty' => $item->qty
                 ];
+                // Hapus kolom qrcode_link dan qrcode_image dari array data
+                // karena tidak ada di tabel.
                 $matRequestItemModel->insert($itemData);
             }
 
-            // 5. Selesaikan transaksi
             if ($db->transStatus() === false) {
                 $db->transRollback();
-                return $this->response->setJSON(['status' => 'error', 'message' => 'Gagal menyimpan data.']);
+                return $this->response->setJSON(['status' => 'error', 'message' => 'Gagal menyimpan data karena transaksi database gagal.']);
             } else {
                 $db->transCommit();
                 return $this->response->setJSON(['status' => 'success']);
             }
-
         } catch (\Exception $e) {
             return $this->response->setStatusCode(500)->setJSON(['status' => 'error', 'message' => $e->getMessage()]);
         }
     }
 
-    /**
-     * Fungsi baru untuk mengecek apakah sudah ada Material Request
-     * untuk schedule_uuid yang diberikan.
-     */
-    public function checkExistingRequest()
-    {
-        $schedule_uuid = $this->request->getPost('schedule_uuid');
-        
-        $db = \Config\Database::connect();
-        $builder = $db->table('wr_matrequest');
-        $builder->where('wr_matrequest_opr_schedule_uuid', $schedule_uuid);
-        $count = $builder->countAllResults();
-
-        return $this->response->setJSON(['exists' => ($count > 0)]);
-    }
-
-    //FUNGSI BUAT PRINT PDF
     public function printPdf($uuid)
     {
         $db = \Config\Database::connect();
-
-        // 1. Ambil data utama dan data item (logika query sama seperti fungsi detail)
         $main_builder = $db->table('wr_matrequest as a');
-        $main_builder->select('a.*, b.mkt_contract_no, c.opr_schedule_date, k1.kar_name as nama_pemberi, k2.kar_name as nama_penerima');
-        $main_builder->join('mkt_contract as b', 'a.wr_matrequest_contract_uuid = b.mkt_contract_uuid', 'left');
-        $main_builder->join('opr_schedule as c', 'a.wr_matrequest_opr_schedule_uuid = c.opr_schedule_uuid', 'left');
+        $main_builder->select('a.*, c.mkt_contract_no, b.opr_schedule_date, k1.kar_name as nama_pemberi, k2.kar_name as nama_penerima');
+        $main_builder->join('opr_schedule as b', 'a.wr_matrequest_opr_schedule_uuid = b.opr_schedule_uuid', 'left');
+        $main_builder->join('mkt_contract as c', 'b.opr_schedule_contract_uuid = c.mkt_contract_uuid', 'left');
         $main_builder->join('m_karyawan as k1', 'a.wr_matrequest_kar_uuid_sign1 = k1.kar_uuid', 'left');
         $main_builder->join('m_karyawan as k2', 'a.wr_matrequest_kar_uuid_sign2 = k2.kar_uuid', 'left');
         $main_builder->where('a.wr_matrequest_uuid', $uuid);
@@ -327,63 +252,60 @@ class MaterialRequest extends BaseController
         $item_builder->select('a.*, b.inventory_kode, b.inventory_name');
         $item_builder->join('m_inventory as b', 'a.wr_matrequest_item_inventory_uuid = b.inventory_uuid', 'left');
         $item_builder->where('a.wr_matrequest_item_matrequest_uuid', $uuid);
-        $data['items'] = $item_builder->get()->getResult();
-
-        if (!$data['mr']) {
-            throw new \CodeIgniter\Exceptions\PageNotFoundException('Material Request tidak ditemukan');
+        $items_raw = $item_builder->get()->getResult('array');
+        
+        $data['items'] = [];
+        foreach($items_raw as $item) {
+            $location_data = json_decode($item['wr_matrequest_item_batch_uuid'], true);
+            if(json_last_error() === JSON_ERROR_NONE && isset($location_data['building_uuid'])) {
+                $item['lokasi'] = $db->table('m_building')->where('building_uuid', $location_data['building_uuid'])->get()->getRow('building_name') . ' / ' . $db->table('m_room')->where('room_uuid', $location_data['room_uuid'])->get()->getRow('room_name');
+            } else {
+                $item['lokasi'] = 'Gudang';
+            }
+            $data['items'][] = $item;
         }
 
-        // 2. Load view khusus untuk PDF (tanpa tombol/navigasi)
         $html = view('Modules\Warehouse\Views\print_detail', $data);
-        
-        // 3. Inisialisasi Dompdf
-        $options = new Options();
-        $options->set('isRemoteEnabled', true); // Izinkan Dompdf memuat gambar dari URL
-        $dompdf = new Dompdf($options);
-        $dompdf->loadHtml($html);
-        
-        // 4. Atur ukuran kertas dan render
-        $dompdf->setPaper('A4', 'portrait');
-        $dompdf->render();
-        
-        // 5. Stream (kirim) file PDF ke browser
-        $dompdf->stream($data['mr']->wr_matrequest_no . ".pdf", ["Attachment" => 0]);
-    }
-
-    //PRINT STICKER
-    public function printSticker($request_uuid, $item_id)
-    {
-        $db = \Config\Database::connect();
-
-        // 1. Ambil data satu item spesifik
-        $item_builder = $db->table('wr_matrequest_item as a');
-        $item_builder->select('a.wr_matrequest_item_qrcode_image, b.inventory_kode, b.inventory_name');
-        $item_builder->join('m_inventory as b', 'a.wr_matrequest_item_inventory_uuid = b.inventory_uuid', 'left');
-        $item_builder->where('a.wr_matrequest_item_matrequest_uuid', $request_uuid);
-        $item_builder->where('a.wr_matrequest_item_id', $item_id);
-        $data['item'] = $item_builder->get()->getRow();
-
-        if (!$data['item'] || empty($data['item']->wr_matrequest_item_qrcode_image)) {
-            throw new \CodeIgniter\Exceptions\PageNotFoundException('Item atau QR Code tidak ditemukan');
-        }
-
-        // 2. Load view khusus untuk stiker
-        $html = view('Modules\Warehouse\Views\print_sticker', $data);
-        
-        // 3. Inisialisasi Dompdf
         $options = new Options();
         $options->set('isRemoteEnabled', true);
         $dompdf = new Dompdf($options);
         $dompdf->loadHtml($html);
-        
-        // 4. Atur ukuran kertas kustom (10cm x 10cm)
-        $customPaper = [0, 0, 283, 283];
-        $dompdf->setPaper($customPaper);
-        
-        // 5. Render dan stream PDF
+        $dompdf->setPaper('A4', 'portrait');
         $dompdf->render();
-        $filename = "Stiker-" . $data['item']->inventory_kode . ".pdf";
-        $dompdf->stream($filename, ["Attachment" => 0]);
+        $dompdf->stream($data['mr']->wr_matrequest_no . ".pdf", ["Attachment" => 0]);
     }
 
+    public function printSticker($request_uuid, $item_id)
+    {
+        $db = \Config\Database::connect();
+        $item_builder = $db->table('wr_matrequest_item as a');
+        $item_builder->select('a.wr_matrequest_item_batch_uuid, b.inventory_kode');
+        $item_builder->join('m_inventory as b', 'a.wr_matrequest_item_inventory_uuid = b.inventory_uuid', 'left');
+        $item_builder->where('a.wr_matrequest_item_matrequest_uuid', $request_uuid);
+        $item_builder->where('a.wr_matrequest_item_id', $item_id);
+        $item_data = $item_builder->get()->getRow();
+
+        if (!$item_data) throw new \CodeIgniter\Exceptions\PageNotFoundException('Item tidak ditemukan');
+
+        $decoded = json_decode($item_data->wr_matrequest_item_batch_uuid, true);
+        if(json_last_error() !== JSON_ERROR_NONE || !isset($decoded['qr_link'])) {
+             throw new \CodeIgniter\Exceptions\PageNotFoundException('Link QR Code untuk item ini tidak ditemukan.');
+        }
+
+        $writer = new PngWriter();
+        $qrCode = new QrCode($decoded['qr_link']);
+        $qr_base64 = $writer->write($qrCode)->getDataUri();
+
+        $data['item_qrcode_image'] = $qr_base64;
+        $data['item_kode'] = $item_data->inventory_kode;
+
+        $html = view('Modules\Warehouse\Views\print_sticker', $data);
+        $options = new Options();
+        $options->set('isRemoteEnabled', true);
+        $dompdf = new Dompdf($options);
+        $dompdf->loadHtml($html);
+        $dompdf->setPaper([0, 0, 283, 283]);
+        $dompdf->render();
+        $dompdf->stream("Stiker-" . $data['item_kode'] . ".pdf", ["Attachment" => 0]);
+    }
 }

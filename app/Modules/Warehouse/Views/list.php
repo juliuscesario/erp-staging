@@ -13,8 +13,8 @@
         <h1>Daftar Material Request</h1>
         <div>
             <a href="<?= site_url('/dashboard/home') ?>" class="btn btn-secondary">Kembali ke Dashboard</a>
-            <a href="<?= site_url('/warehouse/materialrequest/create/'. $material_requests[0]['mkt_contract_uuid']) ?>" class="btn btn-primary">
-                + Tambah Baru untuk <?=$material_requests[0]['mkt_contract_no']?>
+            <a href="<?= site_url('/warehouse/materialrequest/create/b11a7816-01a0-4946-8253-d557f0d2dfc1') ?>" class="btn btn-primary">
+                + Tambah Baru untuk CA-ART/07-25/0002
             </a>
         </div>
     </div>
